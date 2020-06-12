@@ -1,0 +1,930 @@
+---
+title: 'Spotify Songs: An analysis of the spotify dataset'
+author: "Sanjay Jayakumar"
+date: "4/3/2020"
+output: html_document
+---
+
+# Analysis of the popular songs on Spotify{.tabset}
+
+## **Introduction**
+
+1.**Problem Statement**
+
+*If music be the food of love, play on...*
+
+Over the centuries since Shakespeare,music has continued to be an indispensable
+aspect of our daily life.Not a day passes by without you humming a tune or 
+listening to one.Our sources of listening to them have also evolved over time. 
+From the vintage gramaphones through mix tapes through radio, our listening 
+medium has now reached online music-streaming platforms. Spotify, Apple music,
+Google play etc are some of the most popular of these.
+
+With over 36% market share among online music subscribers and having a base of 
+over 100 million subscribers, **Spotify** occupies the top spot. As a music
+afficionado, this prompted me to dig deeper in to the spotify songs database to
+discover interesting trends regarding the songs, their artists and hopefully 
+help people discover new music.
+
+
+2.**Data**
+
+The [Spotify_data](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-01-21/readme.md) used for this analysis is a contiguous dataset of over 30,000 songs with 
+12 audio features for each track, including confidence measures like 
+acousticness,liveness, speechiness and instrumentalness, perceptual measures 
+like energy, loudness, danceablity and valence (positiveness), and descriptors 
+like duration,key, tempo and mode. 
+
+3.**The approach**
+
+A three pronged approach is taken here :
+
+* An overview of the genres and the artists
+
+* An analysis of the track popularity and how it extends aross genres
+
+* Based on the preferences of the user, build a simple system that gives out 
+related songs based on genre and / or artist
+
+Several univariate and multivariate analyses are done across variables post 
+data preparation to substantiate the findings / results obtained by the above 
+approaches
+
+4.**What can you do with the analysis**
+
+* Identify the association between different types of songs 
+
+* As a music aficionado, find the songs that were off your radar
+
+* If you love that genre, get a recommendation for it
+        
+* Identify the popular songs, the popularity of artists etc
+
+*Since a song can be associated with multiple genres on Spotify, there may be 
+cases of multiple instances of the same song appearing while analysing*
+
+## **Packages Required**
+
+The packages used in the project *(currently)* are:
+
+* **data.table**: To read the csv files in the fastest possible way
+
+* **DT** : Filtering, pagination, and sorting of data tables in html outputs
+
+* **kableExtra** : Manipulate table styles for good visualizations
+
+* **knitr** : Aligned displays of table in a html doc
+
+* **stringr**: String replacements and pattern matching
+
+* **formattable**: Allows to create aesthetic tables in R
+
+* **plotly**: Interactive graphing library
+
+* **wordcloud**: Creates wordclouds
+
+* **RColorBrewer**:  offers several color palette for R
+
+* **tidyselect**: allows to  create selecting verbs that are consistent with 
+other tidyverse packages
+
+* **tm**: Used for text mining - creating Corpus
+
+* **shiny**: to create the shiny app
+
+* **shinythemes**: to alter shiny themes
+
+* **tidyverse** : Collection of R packages for data manipulation, exploration
+and visualization. I am currently using
+
+     * **dplyr**: Data manipulation using filter, joins, summarise etc.
+     * **magrittr**: The pipe %>% operator
+```{r,message=FALSE,warning=FALSE}
+# Loading the packages
+library(data.table)
+library(DT)
+library(kableExtra)
+library(knitr)
+library(stringr)
+library(formattable)
+library(plotly)
+library(wordcloud)
+library(RColorBrewer)
+library(tidyverse)
+library(tidyselect)
+library(tm)
+library(shiny)
+library(shinythemes)
+```
+
+## **Data Preparation**{.tabset}
+
+### Description of dataset
+
+The data for the analysis comes from Spotify via the 
+[spotifyr package](https://www.rcharlie.com/spotifyr/). Charlie Thompson, 
+Josiah Parry, Donal Phipps, and Tom Wolff authored this package to make it 
+easier to get either your own data or general metadata arounds songs from 
+Spotify's API. This data was gathered in Jan'2020
+
+
+
+#### Importing the dataset
+
+
+```{r,message=FALSE,warning=FALSE}
+spotify <- read.csv('D:/Cinci prep/Coursework/Data Wrangling with R/spotify_songs.csv')
+```
+
+
+The attribute of the dataset and the column information is provided for the key
+variables. 
+
+
+```{r,message=FALSE,warning=FALSE}
+
+#dimension of the dataset
+dimension <- str_trim(paste0(dim(spotify), sep = "  ", collapse = ""))
+
+#column names of the dataset
+vars <- str_trim(paste0(names(spotify), sep = " | ", collapse = ""))
+
+# Creating a table
+table_attributes <- data_frame(Data = 'Spotify_songs',
+  `Rows  Columns` = dimension,
+  Variables = vars)
+
+# Printing the table
+kable(table_attributes, format = "html") %>%
+  kable_styling(bootstrap_options = "striped") %>%
+    column_spec(2, width = "12em")
+```
+
+### Cleaning & Data Manipulation
+
+We have 13 numeric variables (4  - integer, 9 - float) and 10 character variables
+in this dataset.
+
+#### Are there any missing values?
+
+The next step in cleaning the data was to identify any missing values across 
+columns. A quick is.na() check is used fo the puropse.
+
+```{r,message=FALSE,warning=FALSE}
+
+# Identifying the missing values across columns
+
+miss <- colSums(is.na(spotify))
+print(miss[miss>0])
+
+```
+
+
+Since these removing these observations are not expected to affect our approach,
+we remove these incomplete observations
+
+
+```{r,message=FALSE,warning=FALSE}
+
+# Identifying the missing values across columns
+spotify <- na.omit(spotify)
+
+```
+
+
+#### Should we remove any columns?
+
+```{r,message=FALSE,warning=FALSE}
+
+# Removing irrelevant columns
+
+spotify <- spotify %>% select(-c(playlist_id,playlist_name,track_album_id,playlist_subgenre))
+
+```
+
+
+The columns *playlist_id*,*playlist_name*,*playlist_subgenre*, 
+*track_album_id* will not be used in the ensuing analysis. Hence we proceed to
+remove these columns as well
+
+
+#### Are there any duplicate values?
+
+
+```{r,message=FALSE,warning=FALSE}
+
+# Identifying duplicate values
+print(paste("Number of duplicate observations : " , sum(duplicated(spotify))))
+
+spotify <- spotify[!duplicated(spotify),]
+
+print(paste("We have ",sum(complete.cases(spotify)),"Complete cases!"))
+
+```
+
+#### How are the variables distributed?
+
+```{r,message=FALSE,warning=FALSE}
+
+#Converting df from wide to long for plotting the box plot of variable distributions
+long_df <- gather(spotify,decriptive_vars, values, danceability, energy,
+                  speechiness, acousticness,  liveness,valence,
+                  factor_key=TRUE)
+
+#box plot of the audio features
+
+var_distribution <- ggplot(long_df, aes(x = decriptive_vars, y = values)) +
+        geom_boxplot() + 
+        coord_flip() +
+        labs(title = "Distribution across rest of the variables", x = "Audio features", y = "values")
+
+key_box_plot <- ggplot(spotify, aes(y = key)) + geom_boxplot() +  guides(fill=FALSE) + labs(title = 'Distribution of Key') 
+
+loudness_box_plot <- ggplot(spotify, aes(y = loudness)) + geom_boxplot() +  guides(fill=FALSE) + labs(title = 'Distribution of loudness') 
+
+instrumentalness_box_plot <- ggplot(spotify, aes(y = instrumentalness)) + geom_boxplot() +  guides(fill=FALSE) + labs(title = 'Distribution of instrumentalness') 
+
+tempo_box_plot <- ggplot(spotify, aes(y = tempo)) + geom_boxplot() +  guides(fill=FALSE) + labs(title = 'Distribution of tempo') 
+
+duration_box_plot <- ggplot(spotify, aes(y = duration_ms)) + geom_boxplot() + guides(fill=FALSE) + labs(title = 'Distribution of duration_ms') 
+
+
+ggplotly(key_box_plot)
+ggplotly(loudness_box_plot)
+ggplotly(instrumentalness_box_plot)
+ggplotly(tempo_box_plot)
+ggplotly(duration_box_plot)
+ggplotly(var_distribution)
+
+```
+
+
+There are common outliers in all the variables that have values equal to 0 
+across multiple variables.We remove those observations as well. 
+
+
+```{r,message=FALSE,warning=FALSE}
+
+#removing outliers from the dataset
+spotify <- spotify[!(spotify$duration_ms==4000),]
+
+duration_outliers <- boxplot(spotify$duration_ms, 
+                             plot = FALSE, range = 4)$out
+
+spotify <- spotify %>%
+  filter(!duration_ms %in% duration_outliers) 
+
+duration_new_plot <- spotify  %>%
+  ggplot(aes(y = duration_ms)) +
+  geom_boxplot() +
+  coord_flip() +
+  labs(title = 'Duration, outliers removed') 
+
+duration_new_plot
+
+
+```
+
+
+
+We also remove outliers in the duration_ms column having values outside of the 
+4x range of values
+
+
+
+#### Data Manipulation
+
+
+We are creating 2 new columns
+
+* year - which will have the year of release of the album / song
+
+* durn_minutes - which will have the duration of the song in minutes
+
+
+```{r,message=FALSE,warning=FALSE}
+#creatiing a year columns
+spotify$track_album_release_date <- as.character(spotify$track_album_release_date, "%m/%d/%Y")
+spotify$year <- substr(spotify$track_album_release_date,1,4)
+
+#Creating a duration in minutes column
+spotify$durn_minutes <- spotify$duration_ms/(1000*60)
+
+```
+
+
+#### Final dimensions of the data
+
+
+```{r,message=FALSE,warning=FALSE}
+#dimension of the dataset
+dimension <- str_trim(paste0(dim(spotify), sep = "  ", collapse = ""))
+
+#column names of the dataset
+vars <- str_trim(paste0(names(spotify), sep = " | ", collapse = ""))
+
+# Creating a table
+table_attributes <- data_frame(Data = 'Spotify_songs',
+  `Rows  Columns` = dimension,
+  Variables = vars)
+
+# Printing the table
+kable(table_attributes, format = "html") %>%
+  kable_styling(bootstrap_options = "striped") %>%
+    column_spec(2, width = "12em")
+```
+
+
+
+### Snapshot of the Dataset
+
+```{r,message=FALSE,warning=FALSE}
+
+datatable(head(spotify, 100))
+```
+
+
+### Data Description
+
+The description of the variables are given below:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+Variable_type <- lapply(spotify,class)
+
+Variable_desc <- c("Song unique ID",
+                   "Song Name",
+                   "Song Artist",
+                   "Song Popularity (0-100) where higher is better",
+                   "Song album name",
+                   "Date when album released",
+                   "playlist genre",
+                   "Danceability describes how suitable a track is for dancing 
+                   based on a combination of musical elements including tempo, 
+                   rhythm stability, beat strength, and overall regularity.
+                   A value of 0.0 is least danceable and 1 is most danceable.",
+                   "Energy is a measure from 0.0 to 1.0 and represents a 
+                   perceptual measure of intensity and activity. Typically, 
+                   energetic tracks feel fast, loud, and noisy. For example, 
+                   death metal has high energy, while a Bach prelude scores low 
+                   on the scale. Perceptual features contributing to this 
+                   attribute include dynamic range, perceived loudness, timbre, 
+                   onset rate, and general entropy.",
+                   "The estimated overall key of the track. Integers map to 
+                   pitches using standard Pitch Class notation . E.g. 0 = C,
+                   2 = D, and so on. If no key was detected, the value
+                   is -1.",
+                   "The overall loudness of a track in decibels (dB). Loudness
+                   values are averaged across the full track and are useful for
+                   comparing relative loudness of track. Loudness is the quality
+                   of a sound that is the primary psychological correlate of 
+                   physical strength (amplitude). Values typical range between 
+                   -60 and 0 db",
+                   "Mode indicates the modality (major or minor) of a track, the
+                   type of scale from which its melodic content is derived. 
+                   Major is represented by 1 and minor is 0",
+                   "Speechiness detects the presence of spoken words in a track.
+                   The more exclusively speech-like the recording (e.g. talk 
+                   show, audio book, poetry), the closer to 1.0 the attribute 
+                   value. Values above 0.66 describe tracks that are probably 
+                   made entirely of spoken words. Values between 0.33 and 0.66 
+                   describe tracks that may contain both music and speech, 
+                   either in sections or layered, including such cases as rap 
+                   music. Values below 0.33 most likely represent music and 
+                   other non-speech-like tracks",
+                   "A confidence measure from 0.0 to 1.0 of whether the track is
+                   acoustic.1 represents high confidence the track is acoustic",
+                   "Predicts whether a track contains no vocals. OOH and AAH 
+                   sounds are treated as instrumental in this context.
+                   Rap or spoken word tracks are clearly vocal. The closer
+                   the instrumentalness is to 1, the greater likelihood the
+                   track contains no vocal content. Values above 0.5 are 
+                   intended to represent instrumental tracks, but confidence is
+                   higher as the value approaches 1.0.",
+                   "Detects the presence of an audience in the recording. Higher
+                   liveness values represent an increased probability that the 
+                   track was performed live. A value above 0.8 provides strong 
+                   likelihood that the track is live.",
+                   "A measure from 0.0 to 1.0 describing the musical 
+                   positiveness conveyed by a track. Tracks with high valence 
+                   sound more positive (e.g. happy, cheerful, euphoric), while 
+                   tracks with low valence sound more negative (e.g. sad, 
+                   depressed, angry).",
+                   "The overall estimated tempo of a track in beats per minute 
+                   (BPM). In musical terminology, tempo is the speed or pace of 
+                   a given piece and derives directly from the average beat 
+                   duration.",
+                   "Duration of song in milliseconds",
+                   "Year of release of the album",
+                   "duration of song in minutes")
+
+Variable_names <- colnames(spotify)
+
+# Creating a table
+table_attributes <- data_frame(Data = Variable_names ,
+  `Data Type` = Variable_type,
+  `Variable description` = Variable_desc)
+
+
+
+kable(table_attributes, format = "html") %>%
+  kable_styling(bootstrap_options = "striped") %>%
+    column_spec(2, width = "12em")
+
+```
+
+## **Exploratory Data Analysis**{.tabset}
+
+### **We need to talk about the Genres**
+
+#### **The spread across genres**
+
+First, let us find out the distribution of songs across genres. What genre has
+the most number of songs in the dataset?
+
+```{r,message=FALSE,warning=FALSE}
+
+# songs per genre
+spotify %>% group_by(Genre = playlist_genre) %>%
+  summarise(No_of_tracks = n()) %>% knitr::kable()
+
+```
+
+
+
+EDM is the genre in which most songs have been released, followed by rap and 
+then pop.
+
+
+#### **Who are the artists with the most releases?**
+
+```{r,message=FALSE,warning=FALSE}
+
+# artists with most releases
+most_releases <- spotify %>% group_by(Artist = track_artist) %>%
+  summarise(No_of_tracks = n()) %>%
+  arrange(desc(No_of_tracks)) %>%
+  top_n(15, wt = No_of_tracks) %>% 
+  ggplot(aes(x = Artist, y = No_of_tracks)) +
+        geom_bar(stat = "identity") +
+        coord_flip() + labs(title = "artists with the most releases", x = "artists", y = "no of releases")
+
+ggplotly(most_releases)
+
+
+```
+
+
+
+With ~130 tracks in their name, Queen have been the busiest artists over time.
+David Guetta comes in second with ~90 tracks
+
+
+#### **What are the popular words featuring in titles?**
+
+```{r,message=FALSE,warning=FALSE}
+
+#Create a vector containing only the text
+text <- spotify$track_name 
+# Create a corpus  
+docs <- Corpus(VectorSource(text))
+
+#clean text data
+docs <- docs %>%
+        tm_map(removeNumbers) %>%
+        tm_map(removePunctuation) %>%
+        tm_map(stripWhitespace)
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, removeWords,c("feat","edit","remix","remastered","remaster","radio","version","original","mix"))
+
+#create a doument-term matrix
+
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words)
+
+#generate the word cloud
+wordcloud(words = df$word, freq = df$freq,scale=c(8,0.25), min.freq = 1,
+          max.words=150, random.order=FALSE, rot.per=0.25, 
+          colors=brewer.pal(8, "Dark2"))
+
+```
+
+
+No word has been more associated with music than **love**. **Love** is the most
+frequently used word in track titles. Like, don't, one etc are the other frequent
+ones
+
+
+
+#### **When were the tracks released?**
+
+Is there something as a golden age of music? A span of years when a lot of songs
+were released? The graph below will tell us
+
+```{r,message=FALSE,warning=FALSE}
+
+# grouping tracks by years
+
+plot_year <- spotify %>% 
+  select(year) %>%
+  group_by(year) %>%
+  summarise(count = n()) 
+
+#plotting releases across years
+
+year_plot <- ggplot(plot_year,aes(x = year, y = count,group = 1)) + 
+  geom_line() +
+  theme(legend.position = "none",axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Release of songs across years", x = "Year", 
+       y = "No of songs released")
+
+ggplotly(year_plot)
+
+```
+
+
+On further inspection, over 80% of the songs have been released in the 21st 
+century. Let us get a clearer picture of this period, shall we?
+
+
+```{r,message=FALSE,warning=FALSE}
+
+# zooming into 21st century
+
+plot_zoom_year <- spotify %>% 
+        select(year) %>%
+        group_by(year) %>%
+        summarise(count = n()) %>% 
+        subset(year >= 2000)
+
+
+graph_zoom_year <- ggplot(plot_zoom_year,aes(x = year, y = count,group = 1)) + 
+  geom_line() +
+  theme(legend.position = "none",axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Music in 21st Century", x = "Year", 
+       y = "No of songs released")
+
+ggplotly(graph_zoom_year)
+```
+
+The advent and popularity of internet may have led to this remarkable spike in
+the number of songs released post 2000. The dip in 2020 is because we only have 
+data for less than a month in 2020.
+
+
+
+#### **What characteristics describe a genre?**
+
+Now let us really start exploring the genres, understand the features that 
+characterise a genre
+
+```{r,message=FALSE,warning=FALSE}
+
+#DF of characteristics of genres
+
+genre_description <- spotify %>% 
+  group_by(Genre = playlist_genre) %>%
+  summarise(Danceability = median(danceability),
+            Energy = median(energy),
+            Key = median(key),
+            Loudness = median(loudness),
+            Mode = median(mode),
+            Speechiness = median(speechiness),
+            Acousticness = median(acousticness),
+            Instrumentalness = median(instrumentalness),
+            Liveness = median(liveness),
+            Valence = median(valence),
+            Tempo = median(tempo),
+            Duration = median(durn_minutes))
+
+kable(genre_description , format = "html") %>%
+  kable_styling(bootstrap_options = "striped") %>%
+    column_spec(2, width = "12em")
+
+
+```
+
+As expected, EDM is the "high energy genre". Rap is also a popular party genre 
+with 0.73 danceability (top rank). EDM, rock and pop have the highest tempo
+
+
+
+#### **How closely related are the genres?**
+
+
+```{r,message=FALSE,warning=FALSE}
+names <- names(spotify)[c(8:10,12:19)]
+
+# average features by genre
+avg_genre_matrix <- spotify %>%
+  group_by(playlist_genre) %>%
+  summarise_if(is.numeric, median, na.rm = TRUE) %>%
+  ungroup() 
+
+#converting to matrix
+avg_genre_cor <- avg_genre_matrix %>%
+  select(names, -mode) %>% 
+  scale() %>%
+  t() %>%
+  as.matrix() %>%
+  cor() 
+
+colnames(avg_genre_cor) <- avg_genre_matrix$playlist_genre
+row.names(avg_genre_cor) <- avg_genre_matrix$playlist_genre
+
+avg_genre_cor %>% corrplot::corrplot(method = 'color', 
+                     order = 'hclust',
+                     type = 'upper',
+                     tl.col = 'black',
+                     diag = FALSE,
+                     addCoef.col = "black",
+                     number.cex = 0.75,
+                     mar = c(2,2,2,2),
+                     main = 'Correlation Between Median Genre Feature Values',
+                     family = 'Avenir')
+```
+
+
+The correlation values help us understand that EDM and Rock can be easily
+demarcated from the other genres. Having a correlation of 0.57, latin and r&b 
+are the most similar in nature. Latin is poles apart from EDM and rock with 
+correlation around -0.6. [Source](https://www.kaylinpavlik.com/classifying-songs-genres/)
+
+
+### **..let's not forget about the popularity analysis either**
+
+
+Now that we have had an overview of the genres and related aspects in the 
+previous section, let us find out if there is anything discernible about the 
+popularity of tracks
+
+
+#### **Who are the popular artists overall?**
+
+
+```{r,message=FALSE,warning=FALSE}
+
+#finding popular artists
+popular_artists <- spotify %>% group_by(Artist = track_artist) %>%
+  summarise(No_of_tracks = n(),Popularity = mean(track_popularity))  %>% 
+  filter(No_of_tracks > 2) %>%
+  arrange(desc(Popularity)) %>%
+  top_n(15, wt = Popularity) %>% 
+  ggplot(aes(x = Artist, y = Popularity)) +
+        geom_bar(stat = "identity") +
+        coord_flip() + labs(title = "popular artists overall", x = "Artists", y = "Popularity")
+
+ggplotly(popular_artists)
+
+```
+
+
+Trevor Daniel, Y2K and Don Toliver are the most popular artists. I have given a
+condition of artists having minimum 2 credits to their name so as to eliminate 
+"one hit wonders" 
+
+
+#### **Who are the top artists in each genre?**
+
+
+```{r,message=FALSE,warning=FALSE}
+
+# top artists in each genre
+top_artists_genre <- spotify %>% 
+  group_by(Genre = playlist_genre, Artist = track_artist) %>%
+  summarise(No_of_tracks = n(), Popularity = mean(track_popularity)) %>% 
+  filter(No_of_tracks > 2) %>%
+  arrange(desc(Popularity)) %>%
+  top_n(1, wt = Popularity)
+
+
+kable(top_artists_genre , format = "html") %>%
+  kable_styling(bootstrap_options = "striped") %>%
+    column_spec(2, width = "12em")
+
+
+```
+
+
+
+#### **What is the distribution of popularity among genres?**
+
+
+```{r,message=FALSE,warning=FALSE}
+
+#popularity among genres
+rating_plot <- ggplot(spotify, aes(x = playlist_genre, y = track_popularity)) +
+        geom_boxplot() +
+        coord_flip() +
+        labs(title = "Popularity across genres", x = "Genres", y = "Popularity")
+
+ggplotly(rating_plot)
+
+```
+
+
+Pop has the highest median popularity among the genres. EDM has least median 
+popularity
+
+
+
+#### How has the genre popularity changed over time?
+
+
+For better clarity, I am only considering years 2000 & above
+
+
+```{r,message=FALSE,warning=FALSE}
+
+#poplarity movement across years
+pop_across_years <- spotify %>% 
+  group_by(playlist_genre, year) %>% 
+  summarise(avg = mean(track_popularity) )%>% 
+        subset(year >=2000)
+
+year_graph <- pop_across_years %>%
+  ggplot(aes(x = year, y = avg, 
+             group = playlist_genre, color = playlist_genre)) +
+        geom_line() +   labs(title = "21st Century", x = "Year of release",
+                             y = "Average popularity") + 
+  theme(legend.position = "none",
+                            axis.text.x = element_text(angle = 90, hjust = 1))
+
+year_graph
+```
+
+
+We don't see any discernible pattern here.
+
+
+#### Does the saying "Old is gold", still hold true?
+
+I wanted to see if the old songs were popular than the new ones. I have taken 
+songs released from 1950s onwards.We see that, barring a significant dip during
+the decade of 2000 - 2010, the mean popularity has not changed much over the 
+years
+
+
+```{r,message=FALSE,warning=FALSE}
+
+trend <- spotify %>% 
+  group_by(year) %>%
+  summarise(num_songs = n(), rating = sum(track_popularity)/n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = year, y = rating, group = 1)) +
+  geom_line() +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(title = "Rating vs. Year of release", x = "Year of release", y = "Average popularity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+ggplotly(trend)
+
+```
+
+
+## **Here's a song you will like**{.tabset}
+
+*Who are the people in your life who point you in the direction of new artists, songs and even new styles of music?*
+
+I have created a shiny app which will collect the user preferences :
+
+* by genre - to list out top songs in the genre based on a customizable rating scale
+  
+* by artist - to list out top songs of the artist based on a customizable rating scale
+  
+The shiny app is hosted [here](https://sanjayjayakumar.shinyapps.io/Spotify_Song_Recommender/)
+
+### The App
+
+```{r, echo = FALSE}
+#embedding the rshiny app in markdown
+knitr::include_app("https://sanjayjayakumar.shinyapps.io/Spotify_Song_Recommender/", 
+  height = "800px")
+
+```
+
+### Code
+
+#### User Interface for the app (ui.R) 
+```{r, eval=FALSE, echo = TRUE}
+
+shinyUI(navbarPage(theme = shinytheme("cosmo"),"Song recommender",
+                   tabPanel("Based on Genre",
+                            sidebarPanel(
+                                # Genre Selection
+                                
+                                selectInput(inputId = "Columns", label = "Which genres do you like?",
+                                            unique(songs$playlist_genre), multiple = FALSE),
+                                verbatimTextOutput("rock"),
+                                
+                                sliderInput(inputId = "range", label = "Ragne of Ratings that you wish to read?",
+                                            min = min(songs$track_popularity),max = 100,value = c(55,100))
+                            ),
+                            mainPanel(
+                                    h2("Top songs of the genre"),
+                                DT::dataTableOutput(outputId = "songsreco")
+                            )
+                   ),
+                   tabPanel("Based on Artist",
+                            sidebarPanel(selectInput(inputId = "singers", label = "Which singer do you like?",
+                                                     unique(songs$track_artist), multiple = FALSE),
+                                         verbatimTextOutput("Ed Sheeran"),
+                                         
+                                         sliderInput(inputId = "range_2", label = "Ragne of Ratings that you wish to read?",
+                                                     min = min(songs$track_popularity),max = 100,value = c(55,100))),
+                            mainPanel(
+                                h2("Top songs of the artist"),
+                                DT::dataTableOutput(outputId = "songsreco_artist")))))
+
+```
+
+#### Server Logic for the app (server.R)
+
+```{r, eval=FALSE, echo = TRUE}
+shinyServer(function(input, output) {
+    
+    datasetInput <- reactive({
+        
+        # Filtering the songs based on genre and rating
+        songs %>% filter(playlist_genre %in% as.vector(input$Columns)) %>%
+            group_by(track_name) %>% filter(track_popularity >= as.numeric(input$range[1]), track_popularity <= as.numeric(input$range[2])) %>%
+            arrange(desc(track_popularity)) %>%
+            select(track_name, track_artist, track_popularity, playlist_genre) %>%
+            rename(`song` = track_name, `Genre(s)` = playlist_genre)
+        
+
+    })
+    
+    datasetInput2 <- reactive({
+        
+        # Filtering the songs based on genre and rating
+        songs %>% filter(track_artist %in% as.vector(input$singers)) %>%
+            group_by(track_name) %>% filter(track_popularity >= as.numeric(input$range_2[1]), track_popularity <= as.numeric(input$range_2[2])) %>%
+            arrange(desc(track_popularity)) %>%
+            select(track_name, track_artist, track_popularity, playlist_genre) %>%
+            rename(`song` = track_name, `Genre(s)` = playlist_genre)
+        
+        
+    })
+    
+    
+    #Rendering the table
+    output$songsreco <- DT::renderDataTable({
+        
+        DT::datatable(head(datasetInput(), n = 50), escape = FALSE, options = list(scrollX = '1000px'))
+    })
+    
+    output$songsreco_artist <- DT::renderDataTable({
+        
+        DT::datatable(head(datasetInput2(), n = 100), escape = FALSE, options = list(scrollX = '1000px'))
+    })
+})
+
+```
+
+## **Summary**
+
+I hope the insights given in the previous sections have been informative to you.
+I also hope that you have explored the app created and gotten hold of atleast 
+a couple of new songs that you might want to try out.
+
+Given below is a summary of the findings that I have come across during the 
+exploration of this dataset
+
+* EDM is the genre in which most songs have been released, followed by rap and 
+then pop.
+
+
+* Pop has the highest median popularity among the genres. EDM has least median 
+popularity
+
+
+* EDM is the "high energy genre". Rap is also a popular party genre 
+with 0.73 danceability (top rank). EDM, rock and pop have the highest tempo
+
+
+* EDM and Rock can be easily demarcated from the other genres. . Latin is poles
+apart from EDM and rock 
+
+
+* Barring a significant dip in mean popularityduring the decade of 2000 - 2010,
+the mean popularity has not changed much over the years
+
+
+* With ~130 tracks in their name, Queen have been the busiest artists over time.
+David Guetta comes in second with ~90 tracks
+
+* Trevor Daniel, Y2K and Don Toliver are the most popular artists. I have given 
+a condition of artists having minimum 2 credits to their name so as to eliminate 
+"one hit wonders"
+
+* **Love** is the most frequently used word in track titles. Like, don't, one 
+etc are the other frequent ones
+
+
+
+
